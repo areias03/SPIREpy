@@ -1,2 +1,1 @@
-from study import Study
-from sample import Sample
+from spirepy.study import Study

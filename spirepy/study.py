@@ -4,7 +4,6 @@ import os
 import pandas as pd
 import requests
 
-from spirepy import Sample
 from spirepy.logger import logger
 
 
@@ -46,6 +45,8 @@ class Study:
 
     @property
     def samples(self):
+        from .sample import Sample
+
         if self._samples is None:
             sample_list = []
             for s in self.metadata.sample_id.tolist():

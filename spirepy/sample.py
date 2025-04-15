@@ -1,18 +1,16 @@
 import os
 import io
 import subprocess
-import glob
-import gzip
-from Bio import SeqIO
 
 import requests
 import urllib.request
 
 import pandas as pd
+import os.path as path
 
-from spirepy import Study
+from .study import Study
 from spirepy.data import genome_metadata
-from spire.logger import logger
+from spirepy.logger import logger
 from spirepy.util import clean_emapper_data
 
 
@@ -38,7 +36,7 @@ class Sample:
         """
         self.id = id
         self.study = study
-        self.out_folder = f"{study.folder}/{self.id}/"
+        self.out_folder = path.join(study.folder, self.id)
         self._eggnog_data = None
         self._mags = None
         self._reconstructions = None
@@ -48,24 +46,24 @@ class Sample:
         os.makedirs(self.out_folder, exist_ok=True)
 
     def __str__(self):
-        return (
-            f"This sample's id is {self.id} and belongs to the {self.study.name} study."
-        )
+        return f"Sample id: {self.id} \tStudy: {self.study.name}"
 
     def __repr__(self):
-        return f"Sample id: {self.id} \tStudy: {self.study.name}"
+        return self.__str__()
 
     @property
     def eggnog_data(self):
         if self._eggnog_data is None:
             urllib.request.urlretrieve(
                 f"https://spire.embl.de/download_eggnog/{self.id}",
-                f"{self.out_folder}/emapper_annotations.gz",
+                path.join(self.out_folder, "emapper_annotations.gz"),
             )
             eggnog_data = clean_emapper_data(
-                f"{self.out_folder}/emapper_annotations.gz"
+                path.join(self.out_folder, "emapper_annotations.gz")
             )
-            eggnog_data.to_csv(f"{self.out_folder}/emapper_annotations.tsv", sep="\t")
+            eggnog_data.to_csv(
+                path.join(self.out_folder, "emapper_annotations.tsv", sep="\t")
+            )
             self._eggnog_data = eggnog_data
         return self._eggnog_data
 
@@ -109,18 +107,17 @@ class Sample:
         return self._manifest
 
     def download_mags(self):
-        mag_folder = f"{self.out_folder}mags/"
+        mag_folder = path.join(self.out_folder, "mags/")
         os.makedirs(mag_folder, exist_ok=True)
         for mag in self.mags:
             urllib.request.urlretrieve(
                 f"https://spire.embl.de/download_file/{mag}",
-                f"{mag_folder}{mag}.fa.gz",
+                path.join(mag_folder, "{mag}.fa.gz"),
             )
 
     def generate_manifest(self):
         manif = []
-        reconstruction_folder = f"{self.out_folder}reconstructions/"
-        abun = self.get_abundances()
+        reconstruction_folder = path.join(self.out_folder, "reconstructions/")
         for _, genome in self.mags.iterrows():
             manif.append(
                 [
@@ -134,7 +131,6 @@ class Sample:
                     genome.species,
                     f"{reconstruction_folder}{genome.genome_id}.xml",
                     genome.derived_from_sample,
-                    abun[f"{self.out_folder}mags/{genome.genome_id}.fa.gz"],
                 ]
             )
 
@@ -151,31 +147,10 @@ class Sample:
                 "species",
                 "file",
                 "sample_id",
-                "abundance",
             ],
         )
         manifest.groupby("sample_id")
-        manifest["abundance"] = [
-            float(i) / sum(manifest["abundance"]) for i in manifest["abundance"]
-        ]
-        # manifest["abundance"] = manifest["abundance"] * 1000
         return manifest
-
-    def get_abundances(self):
-        abundances = {}
-        mag_folder = f"{self.out_folder}mags/"
-        depths = pd.read_csv(
-            f"~/microbiome/global_data_spire/SPIRE/studies/{self.study.name}/psa_megahit/psb_metabat2/{self.id}_aligned_to_{self.id}.depths",
-            sep="\t",
-            # f"{self.out_folder}bins/{self.id}_aligned_to_{self.id}.depths", sep="\t"
-        )
-        for f in glob.glob(f"{mag_folder}*.fa.gz"):
-            with gzip.open(f, "rt") as handle:
-                list_headers = [rec.id for rec in SeqIO.parse(handle, "fasta")]
-            mask = depths["contigName"].isin(list_headers)
-            abundance = depths[mask]["totalAvgDepth"].sum()
-            abundances[f] = abundance
-        return abundances
 
     def reconstruct(self, mag):
         reconstruction_folder = f"{self.out_folder}reconstructions/"
